@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ตรวจนับครุภัณฑ์">
+  <script>
+    /* PWA — ใส่ตอนรันไทม์ เพื่อให้ path เป็นแบบ relative จริง (ตัวแพ็กไฟล์จะไม่แปลงเป็น blob:) */
+    (function () {
+      try {
+        document.title = 'ระบบตรวจนับครุภัณฑ์ QR Code';
+        var add = function (tag, attrs) {
+          var sel = tag;   // เทียบทุก attribute รวมกัน เพื่อไม่ให้ข้ามไอคอนคนละขนาด
+          for (var k in attrs) sel += '[' + k + '="' + attrs[k] + '"]';
+          if (document.head.querySelector(sel)) return;
+          var el = document.createElement(tag);
+          for (var a in attrs) el.setAttribute(a, attrs[a]);
+          document.head.appendChild(el);
+        };
+        if (!document.head.querySelector('link[rel="manifest"]')) add('link', { rel: 'manifest', href: 'manifest.json' });
+        /* ไอคอน — ต้องใส่ตอนรันไทม์ด้วย ไม่งั้นตัวแพ็กไฟล์จะแปลงเป็น blob: ทำให้ iOS ดึงไอคอนไม่ได้ */
+        add('link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: 'icons/favicon-32.png' });
+        add('link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: 'icons/favicon-16.png' });
+        add('link', { rel: 'apple-touch-icon', sizes: '180x180', href: 'icons/apple-touch-icon.png' });
+        add('meta', { name: 'mobile-web-app-capable', content: 'yes' });
+        if (!document.head.querySelector('meta[name="theme-color"]')) add('meta', { name: 'theme-color', content: '#0f766e' });
+        if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('sw.js').then(function (reg) {
+              reg.addEventListener('updatefound', function () {
+                var nw = reg.installing;
+                if (nw) nw.addEventListener('statechange', function () {
+                  if (nw.state === 'installed' && navigator.serviceWorker.controller) nw.postMessage('skipWaiting');
+                });
+              });
+            }).catch(function () {});
+            var done = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+              if (!done) { done = true; location.reload(); }
+            });
+          });
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; background: #e4e9ee; color: #16232b; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    input, select, button, textarea { font-family: inherit; }
+    button { cursor: pointer; border: none; background: none; }
+    input:focus, select:focus { outline: none; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #c3cad6; border-radius: 8px; }
+    @keyframes scanline { 0% { top: 6%; } 50% { top: 88%; } 100% { top: 6%; } }
+    @keyframes pop { 0% { transform: translateY(18px) scale(.98); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+    @keyframes sheetUp { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+    @keyframes fade { 0% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes riseIn { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes pulseRing { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+    /* ซ่อนแถบ error overlay ของตัวแพ็กไฟล์ (bundle) ไม่ให้บังปุ่มบันทึก */
+    #__bundler_err, #__bundler_loading { display: none !important; }
+  </style>
+</helmet>
+
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <rect width="100" height="100" rx="20" fill="#0f766e"/>
+    <g fill="none" stroke="#c9ff5e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M32 38V32a4 4 0 0 1 4-4h6M68 38V32a4 4 0 0 0-4-4h-6M32 62v6a4 4 0 0 0 4 4h6M68 62v6a4 4 0 0 1-4 4h-6"/>
+      <path d="M30 50h40" stroke="#ffffff"/>
+    </g>
+  </svg>
+</template>
+<div style="min-height: 100vh; display: flex; justify-content: center; background: radial-gradient(1200px 600px at 50% -10%, #f0f4f6, #dfe6ec 70%);">
+  <div style="width: 100%; max-width: 640px; min-height: 100vh; background: #f1f4f7; position: relative; display: flex; flex-direction: column; box-shadow: 0 0 0 1px rgba(15,28,34,.05), 0 24px 70px rgba(15,28,34,.13);">
+
+    <!-- ===== Header ===== -->
+    <header style="position: sticky; top: 0; z-index: 30; background: linear-gradient(135deg, #0f766e 0%, #0b5e57 100%); padding: 15px 18px 17px; border-radius: 0 0 20px 20px; box-shadow: 0 6px 22px rgba(11,94,87,.22);">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 42px; height: 42px; border-radius: 13px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.24); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H8M21 8V5.5A1.5 1.5 0 0 0 19.5 4H16M3 16v2.5A1.5 1.5 0 0 0 4.5 20H8M21 16v2.5A1.5 1.5 0 0 1 19.5 20H16"></path>
+            <path d="M4 12h16" stroke="#c9ff5e" stroke-width="2.4"></path>
+          </svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 16.5px; font-weight: 700; line-height: 1.15; color: #fff; letter-spacing: -.2px;">ตรวจนับครุภัณฑ์</div>
+          <div style="font-size: 11.5px; color: rgba(255,255,255,.7); font-weight: 500; margin-top: 1px;">สแกน QR · อัปเดตสติกเกอร์และที่ตั้ง</div>
+        </div>
+        <button onClick="{{ onSyncNow }}" title="ซิงค์ข้อมูลขึ้น Google Sheet" style="display: flex; align-items: center; gap: 6px; background: {{ syncChipBg }}; color: {{ syncChipColor }}; padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; flex-shrink: 0; white-space: nowrap;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ syncDotColor }}; display: inline-block;"></span>
+          {{ syncChipLabel }}
+        </button>
+      </div>
+    </header>
+
+    <!-- ===== Body ===== -->
+    <main style="flex: 1; position: relative; overflow: hidden;">
+
+      <!-- Loading -->
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #6b7688;">
+          <div style="width: 34px; height: 34px; border: 3px solid #d7dfe4; border-top-color: #0f766e; border-radius: 50%; animation: spin .8s linear infinite;"></div>
+          <div style="font-size: 13px; font-weight: 500;">กำลังโหลดฐานข้อมูลครุภัณฑ์…</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ready }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 15px 15px 104px;">
+
+        <!-- ===================== SCAN VIEW ===================== -->
+        <sc-if value="{{ isScan }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <!-- camera frame -->
+          <div style="position: relative; width: 100%; aspect-ratio: 4/3; max-height: 380px; border-radius: 22px; overflow: hidden; background: #08161a; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 26px rgba(15,28,34,.16);">
+            <video ref="{{ videoRef }}" playsinline muted style="width: 100%; height: 100%; object-fit: cover; display: {{ videoDisplay }};"></video>
+            <canvas ref="{{ canvasRef }}" style="display: none;"></canvas>
+
+            <sc-if value="{{ cameraOff }}" hint-placeholder-val="{{ true }}">
+              <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; color: #8ba0a8; padding: 26px; text-align: center;">
+                <div style="width: 62px; height: 62px; border-radius: 20px; background: rgba(201,255,94,.1); border: 1px solid rgba(201,255,94,.22); display: flex; align-items: center; justify-content: center;">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#c9ff5e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="3"></rect><circle cx="12" cy="13" r="4"></circle><path d="M8 6l1.5-2.5h5L16 6"></path></svg>
+                </div>
+                <div style="font-size: 13px; line-height: 1.6; color: #9fb3ba;">กดเปิดกล้องเพื่อเริ่มสแกน QR Code<br>บนสติกเกอร์ครุภัณฑ์</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ cameraOn }}" hint-placeholder-val="{{ false }}">
+              <div style="position: absolute; inset: 0; pointer-events: none;">
+                <div style="position: absolute; inset: 14% 20%; border-radius: 18px; box-shadow: 0 0 0 3000px rgba(8,22,26,.42);"></div>
+                <div style="position: absolute; left: 20%; top: 14%; width: 32px; height: 32px; border-top: 3.5px solid #c9ff5e; border-left: 3.5px solid #c9ff5e; border-top-left-radius: 14px; animation: pulseRing 1.8s ease-in-out infinite;"></div>
+                <div style="position: absolute; right: 20%; top: 14%; width: 32px; height: 32px; border-top: 3.5px solid #c9ff5e; border-right: 3.5px solid #c9ff5e; border-top-right-radius: 14px; animation: pulseRing 1.8s ease-in-out infinite;"></div>
+                <div style="position: absolute; left: 20%; bottom: 14%; width: 32px; height: 32px; border-bottom: 3.5px solid #c9ff5e; border-left: 3.5px solid #c9ff5e; border-bottom-left-radius: 14px; animation: pulseRing 1.8s ease-in-out infinite;"></div>
+                <div style="position: absolute; right: 20%; bottom: 14%; width: 32px; height: 32px; border-bottom: 3.5px solid #c9ff5e; border-right: 3.5px solid #c9ff5e; border-bottom-right-radius: 14px; animation: pulseRing 1.8s ease-in-out infinite;"></div>
+                <div style="position: absolute; left: 22%; right: 22%; height: 2.5px; border-radius: 999px; background: linear-gradient(90deg, transparent, #c9ff5e, transparent); box-shadow: 0 0 14px rgba(201,255,94,.7); animation: scanline 2.2s ease-in-out infinite;"></div>
+                <div style="position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.82);">เล็ง QR ในกรอบ — เจอแล้วระบบจะเด้งข้อมูลอัตโนมัติ</div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- camera controls -->
+          <div style="display: flex; gap: 9px; margin-top: 12px; align-items: stretch;">
+            <button onClick="{{ onToggleCamera }}" style="flex: 1; padding: 15px; border-radius: 15px; font-size: 14.5px; font-weight: 700; color: #fff; background: {{ camBtnBg }}; display: flex; align-items: center; justify-content: center; gap: 9px; box-shadow: 0 4px 14px {{ camBtnShadow }}; white-space: nowrap;">
+              <span dangerouslySetInnerHTML="{{ camBtnIcon }}" style="display: flex;"></span>
+              {{ camBtnLabel }}
+            </button>
+            <button onClick="{{ onToggleContinuous }}" title="สแกนต่อเนื่องหลายชิ้น — เปิดอยู่จะไม่ปิดกล้องหลังสแกน" style="flex-shrink: 0; padding: 11px 14px; border-radius: 15px; background: {{ contBg }}; border: 1.5px solid {{ contBorder }}; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;">
+              <span style="width: 34px; height: 19px; border-radius: 999px; background: {{ contTrackBg }}; position: relative; display: block; transition: background .2s;">
+                <span style="position: absolute; top: 2px; left: {{ contKnobX }}; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .2s;"></span>
+              </span>
+              <span style="font-size: 10.5px; font-weight: 700; color: {{ contColor }};">ต่อเนื่อง</span>
+            </button>
+          </div>
+
+          <!-- manual entry -->
+          <div style="margin-top: 12px; background: #fff; border-radius: 17px; padding: 14px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 16px rgba(15,28,34,.05);">
+            <div style="display: flex; align-items: center; gap: 7px; margin-bottom: 9px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-linecap="round"><path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10"/></svg>
+              <div style="font-size: 12px; font-weight: 700; color: #55666f; white-space: nowrap;">หรือยิงบาร์โค้ด / พิมพ์รหัสเอง</div>
+            </div>
+            <form onSubmit="{{ onManualSubmit }}" style="display: flex; gap: 8px;">
+              <input ref="{{ manualRef }}" value="{{ manualCode }}" onChange="{{ onManualChange }}" placeholder="เช่น 25-8090140001-0006" class="mono" style="flex: 1; min-width: 0; padding: 13px 14px; border-radius: 13px; border: 1.5px solid #dde4ea; font-size: 14px; background: #f7f9fb; color: #16232b;">
+              <button type="submit" style="padding: 0 20px; border-radius: 13px; background: #0f766e; color: #fff; font-weight: 700; font-size: 14px;">ค้นหา</button>
+            </form>
+          </div>
+
+          <!-- recent scans -->
+          <div style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-size: 13px; font-weight: 700; color: #2b3b44;">ประวัติการสแกนล่าสุด</div>
+            <sc-if value="{{ hasRecent }}" hint-placeholder-val="{{ false }}"><button onClick="{{ onClearRecent }}" style="font-size: 12px; color: #93a3ae; font-weight: 600;">ล้าง</button></sc-if>
+          </div>
+          <sc-if value="{{ hasRecent }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 9px; display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{ recentScans }}" as="r" hint-placeholder-count="2">
+                <button onClick="{{ r.onOpen }}" style="text-align: left; display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 14px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04); animation: riseIn .25s ease;">
+                  <span style="width: 34px; height: 34px; border-radius: 11px; background: {{ r.dotBg }}; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                    <span style="width: 9px; height: 9px; border-radius: 50%; background: {{ r.dotColor }};"></span>
+                  </span>
+                  <span style="flex: 1; min-width: 0;">
+                    <span class="mono" style="display: block; font-size: 13px; font-weight: 600; color: #16232b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.code }}</span>
+                    <span style="display: block; font-size: 11.5px; color: #8695a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;">{{ r.label }}</span>
+                  </span>
+                  <span style="font-size: 11px; color: #a9b6bf; flex-shrink: 0; font-weight: 600;">{{ r.time }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noRecent }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top: 9px; padding: 26px; text-align: center; color: #a9b6bf; font-size: 12.5px; background: #fff; border-radius: 15px; box-shadow: inset 0 0 0 1.5px #e6ebef;">ยังไม่มีรายการที่สแกน</div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ===================== LIST VIEW ===================== -->
+        <sc-if value="{{ isList }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="position: relative;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#93a3ae" stroke-width="2.2" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>
+            <input value="{{ searchTerm }}" onChange="{{ onSearchChange }}" placeholder="ค้นหารหัส หรือชื่อทรัพย์สิน" style="width: 100%; padding: 14px 14px 14px 40px; border-radius: 15px; border: none; font-size: 14px; background: #fff; color: #16232b; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 14px rgba(15,28,34,.05);">
+          </div>
+
+          <div style="display: flex; gap: 7px; margin-top: 11px; overflow-x: auto; padding-bottom: 3px;">
+            <sc-for list="{{ statusFilters }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.onClick }}" style="white-space: nowrap; padding: 9px 15px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: {{ f.bg }}; color: {{ f.color }}; box-shadow: inset 0 0 0 1.5px {{ f.border }};">{{ f.label }}</button>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <select value="{{ filterFloor }}" onChange="{{ onFloorFilterChange }}" style="width: 100%; padding: 12px 13px; border-radius: 13px; border: 1.5px solid #dde4ea; font-size: 13.5px; background: #fff; color: #2b3b44; font-weight: 500;">
+              <option value="">ทุกชั้น (ที่ตั้งเดิม)</option>
+              <sc-for list="{{ floorFilterOpts }}" as="fl" hint-placeholder-count="0"><option value="{{ fl }}">{{ fl }}</option></sc-for>
+            </select>
+          </div>
+
+          <div style="margin-top: 12px; font-size: 12px; color: #8695a0; font-weight: 600;">พบ {{ listCountLabel }} รายการ</div>
+
+          <div style="margin-top: 9px; display: flex; flex-direction: column; gap: 8px;">
+            <sc-for list="{{ visibleList }}" as="it" hint-placeholder-count="6">
+              <button onClick="{{ it.onOpen }}" style="text-align: left; display: flex; align-items: center; gap: 11px; background: #fff; border-radius: 14px; padding: 13px 14px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+                <span style="width: 3px; align-self: stretch; border-radius: 999px; background: {{ it.badgeColor }}; flex-shrink: 0;"></span>
+                <span style="flex: 1; min-width: 0;">
+                  <span class="mono" style="display: block; font-size: 13px; font-weight: 600; color: #16232b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.code }}</span>
+                  <span style="display: block; font-size: 12px; color: #5c6c76; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.name }}</span>
+                  <span style="display: block; font-size: 11px; color: #a2b0b9; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.srcLabel }}</span>
+                </span>
+                <span style="flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: {{ it.badgeBg }}; color: {{ it.badgeColor }};">{{ it.badge }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ canLoadMore }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ onLoadMore }}" style="width: 100%; margin-top: 12px; padding: 13px; border-radius: 13px; background: #fff; font-weight: 700; font-size: 13.5px; color: #0f766e; box-shadow: inset 0 0 0 1.5px #cfe3e0;">โหลดเพิ่ม</button>
+          </sc-if>
+          <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 14px; padding: 30px; text-align: center; color: #a9b6bf; font-size: 13px; background: #fff; border-radius: 15px; box-shadow: inset 0 0 0 1.5px #e6ebef;">ไม่พบรายการที่ตรงกับเงื่อนไข</div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ===================== PROGRESS VIEW ===================== -->
+        <sc-if value="{{ isProgress }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background: linear-gradient(135deg, #0f766e, #0b5e57); border-radius: 20px; padding: 21px; color: #fff; box-shadow: 0 8px 26px rgba(11,94,87,.22);">
+            <div style="font-size: 12.5px; opacity: .8; font-weight: 600; letter-spacing: .2px;">ความคืบหน้าการตรวจนับ</div>
+            <div style="display: flex; align-items: baseline; gap: 9px; margin-top: 5px;">
+              <span style="font-size: 42px; font-weight: 700; line-height: 1; letter-spacing: -1px;" class="mono">{{ pct }}%</span>
+              <span style="font-size: 13.5px; opacity: .88;">ตรวจแล้ว {{ checkedLabel }} / {{ totalLabel }}</span>
+            </div>
+            <div style="margin-top: 15px; height: 11px; background: rgba(255,255,255,.2); border-radius: 999px; overflow: hidden;">
+              <div style="height: 100%; width: {{ pct }}%; background: #c9ff5e; border-radius: 999px; transition: width .5s; box-shadow: 0 0 12px rgba(201,255,94,.5);"></div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px;">
+            <sc-for list="{{ statCards }}" as="s" hint-placeholder-count="4">
+              <div style="background: #fff; border-radius: 15px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+                <div style="display: flex; align-items: center; gap: 7px;">
+                  <span style="width: 9px; height: 9px; border-radius: 3px; background: {{ s.color }};"></span>
+                  <span style="font-size: 12px; color: #5c6c76; font-weight: 600; white-space: nowrap;">{{ s.label }}</span>
+                </div>
+                <div class="mono" style="font-size: 27px; font-weight: 700; margin-top: 5px; color: #16232b; letter-spacing: -.5px;">{{ s.count }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: 20px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 3px; height: 15px; border-radius: 999px; background: #0f766e;"></span>
+            <div style="font-size: 13px; font-weight: 700; color: #2b3b44;">ความคืบหน้าตามชั้น (ที่ตั้งเดิม)</div>
+          </div>
+          <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 9px;">
+            <sc-for list="{{ floorProgress }}" as="f" hint-placeholder-count="5">
+              <div style="background: #fff; border-radius: 14px; padding: 13px 14px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+                  <span style="font-size: 13px; font-weight: 600; color: #223038;">{{ f.floor }}</span>
+                  <span class="mono" style="font-size: 12px; color: #8695a0; white-space: nowrap;">{{ f.checked }}/{{ f.total }} · {{ f.pct }}%</span>
+                </div>
+                <div style="height: 8px; background: #eef1f4; border-radius: 999px; overflow: hidden;">
+                  <div style="height: 100%; width: {{ f.pct }}%; background: {{ f.barColor }}; border-radius: 999px; transition: width .4s;"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: 20px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 3px; height: 15px; border-radius: 999px; background: #7c4ddb;"></span>
+            <div style="font-size: 13px; font-weight: 700; color: #2b3b44;">ความคืบหน้าตามประเภทงาน</div>
+          </div>
+          <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 9px;">
+            <sc-for list="{{ workProgress }}" as="w" hint-placeholder-count="3">
+              <div style="background: #fff; border-radius: 14px; padding: 13px 14px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px;">
+                  <span style="font-size: 13px; font-weight: 600; color: #223038; line-height: 1.35;">{{ w.work }}</span>
+                  <span class="mono" style="font-size: 12px; color: #8695a0; white-space: nowrap;">{{ w.checked }}/{{ w.total }} · {{ w.pct }}%</span>
+                </div>
+                <div style="height: 8px; background: #eef1f4; border-radius: 999px; overflow: hidden;">
+                  <div style="height: 100%; width: {{ w.pct }}%; background: {{ w.barColor }}; border-radius: 999px; transition: width .4s;"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background: #fff; border-radius: 17px; padding: 17px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 14px rgba(15,28,34,.05);">
+            <div style="font-size: 14px; font-weight: 700; color: #223038;">เชื่อมต่อ Google Sheet</div>
+            <div style="font-size: 12px; color: #8695a0; margin-top: 3px; line-height: 1.55;">ระบบฝัง URL กลางมาให้แล้ว — ทุกเครื่องเห็นข้อมูลชุดเดียวกัน ปกติไม่ต้องแก้</div>
+            <input value="{{ webhookUrl }}" onChange="{{ onWebhookChange }}" placeholder="https://script.google.com/macros/s/…/exec" class="mono" style="width: 100%; margin-top: 11px; padding: 11px 13px; border-radius: 11px; border: 1.5px solid #dde3ec; font-size: 12px; background: #f8fafc;">
+            <div style="display: flex; gap: 9px; margin-top: 11px;">
+              <button onClick="{{ onTestConn }}" style="flex: 1; padding: 12px; border-radius: 12px; background: #0f766e; color: #fff; font-weight: 700; font-size: 13.5px;">ทดสอบการเชื่อมต่อ</button>
+              <button onClick="{{ onSyncNow }}" style="flex: 1; padding: 12px; border-radius: 12px; background: #eef1f4; color: #3d4f58; font-weight: 700; font-size: 13.5px;">ซิงค์ค้าง ({{ pendingCount }})</button>
+            </div>
+            <button onClick="{{ onPull }}" style="width: 100%; margin-top: 9px; padding: 12px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1.5px #0f766e; color: #0f766e; font-weight: 700; font-size: 13.5px;">⤓ ดึงข้อมูลที่ตรวจแล้วจาก Sheet</button>
+            <sc-if value="{{ hasConnMsg }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 500; background: {{ connMsgBg }}; color: {{ connMsgColor }};">{{ connMsg }}</div>
+            </sc-if>
+          </div>
+
+          <div style="background: #fff; border-radius: 17px; padding: 17px; margin-top: 12px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 14px rgba(15,28,34,.05);">
+            <div style="font-size: 14px; font-weight: 700; color: #223038;">สำรอง / ส่งออกข้อมูล</div>
+            <div style="font-size: 12px; color: #8695a0; margin-top: 3px; line-height: 1.55;">ดาวน์โหลดผลการตรวจทั้งหมดเป็นไฟล์ CSV (เปิดใน Excel / นำเข้า Google Sheet ได้)</div>
+            <button onClick="{{ onExport }}" style="width: 100%; margin-top: 11px; padding: 11px; border-radius: 11px; background: #1a2230; color: #fff; font-weight: 600; font-size: 13.5px;">ส่งออก CSV ({{ pendingCount }} รายการที่ตรวจ)</button>
+          </div>
+
+          <div style="background: #fff; border-radius: 17px; padding: 17px; margin-top: 12px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 14px rgba(15,28,34,.05);">
+            <div style="font-size: 14px; font-weight: 700; color: #223038;">รูปภาพครุภัณฑ์</div>
+            <div style="font-size: 12px; color: #8695a0; margin-top: 3px; line-height: 1.55;">แอปดึง “รหัสกลุ่ม” จากต้นชื่อทรัพย์สิน (เช่น PCH-14, TP-04B) แล้วเปิดรูปจาก [โฟลเดอร์]/[รหัสกลุ่ม].jpg อัตโนมัติ — วางรูปไว้ในโฟลเดอร์ images/ ของเว็บ ปกติไม่ต้องแก้ค่านี้</div>
+            <input value="{{ imgBase }}" onChange="{{ onImgBaseChange }}" placeholder="images/" class="mono" style="width: 100%; margin-top: 11px; padding: 11px 13px; border-radius: 11px; border: 1.5px solid #dde3ec; font-size: 12px; background: #f8fafc;">
+          </div>
+
+          <div style="background: #fff; border-radius: 17px; padding: 17px; margin-top: 12px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 4px 14px rgba(15,28,34,.05);">
+            <div style="font-size: 14px; font-weight: 700; color: #223038;">ฐานข้อมูล</div>
+            <div style="display: flex; justify-content: space-between; margin-top: 9px; font-size: 13px;"><span style="color: #6b7688;">ครุภัณฑ์ทั้งหมด</span><span class="mono" style="font-weight: 600;">{{ totalLabel }}</span></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px;"><span style="color: #6b7688;">ตรวจแล้ว (รวมในไฟล์เดิม)</span><span class="mono" style="font-weight: 600;">{{ checkedLabel }}</span></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px;"><span style="color: #6b7688;">บันทึกในเครื่องนี้</span><span class="mono" style="font-weight: 600;">{{ localEditLabel }}</span></div>
+            <button onClick="{{ onResetLocal }}" style="width: 100%; margin-top: 13px; padding: 10px; border-radius: 11px; background: #fff; border: 1.5px solid #f0d0d0; color: #c0392b; font-weight: 600; font-size: 13px;">ล้างข้อมูลที่บันทึกในเครื่อง</button>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+      </sc-if>
+    </main>
+
+    <!-- ===== Bottom Nav ===== -->
+    <nav style="position: sticky; bottom: 0; z-index: 30; background: rgba(255,255,255,.93); backdrop-filter: blur(14px); box-shadow: 0 -1px 0 #e2e8ec, 0 -8px 24px rgba(15,28,34,.05); display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="4">
+        <button onClick="{{ n.onClick }}" style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 6px; color: {{ n.color }}; background: {{ n.bg }}; border-radius: 13px; transition: background .18s;">
+          <span style="position: relative; display: flex;" dangerouslySetInnerHTML="{{ n.icon }}"></span>
+          <span style="font-size: 10.5px; font-weight: 700;">{{ n.label }}</span>
+        </button>
+      </sc-for>
+    </nav>
+
+    <!-- ===== Detail Bottom Sheet ===== -->
+    <sc-if value="{{ hasCurrent }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ onCloseDetail }}" style="position: fixed; inset: 0; z-index: 50; background: rgba(13,20,33,.45); display: flex; align-items: flex-end; justify-content: center; animation: fade .2s;">
+        <div onClick="{{ stopProp }}" style="width: 100%; max-width: 640px; max-height: 93vh; overflow-y: auto; background: #f1f4f7; border-radius: 26px 26px 0 0; animation: sheetUp .3s cubic-bezier(.2,.8,.2,1);">
+          <div style="position: sticky; top: 0; background: #f1f4f7; padding: 12px 18px 10px; z-index: 2;">
+            <div style="width: 42px; height: 5px; border-radius: 999px; background: #cdd7dd; margin: 0 auto 13px;"></div>
+            <div style="display: flex; align-items: flex-start; gap: 11px;">
+              <div style="flex: 1; min-width: 0;">
+                <div class="mono" style="font-size: 17px; font-weight: 700; color: #0b1c22; word-break: break-all; letter-spacing: -.2px;">{{ cur.code }}</div>
+                <div style="font-size: 13.5px; color: #55666f; margin-top: 3px; line-height: 1.4;">{{ cur.name }}</div>
+              </div>
+              <button onClick="{{ onCloseDetail }}" style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: #e4eaee; color: #55666f; font-size: 19px; display: flex; align-items: center; justify-content: center;">×</button>
+            </div>
+            <sc-if value="{{ curAlreadyChecked }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; background: {{ curPrevBg }}; color: {{ curPrevColor }}; padding: 8px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 600;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01M10.3 3.86l-8.5 14.7A1.5 1.5 0 0 0 3.1 21h17.8a1.5 1.5 0 0 0 1.3-2.44l-8.5-14.7a1.5 1.5 0 0 0-2.6 0z"></path></svg>
+                เคยตรวจแล้ว: {{ curPrevStatus }} — บันทึกใหม่จะเขียนทับ
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="padding: 4px 18px 0;">
+            <!-- asset photo -->
+            <sc-if value="{{ imgTry }}" hint-placeholder-val="{{ false }}">
+              <div style="position: relative; width: 100%; border-radius: 14px; overflow: hidden; background: #11161f; margin-bottom: 10px; display: {{ imgBoxDisplay }};">
+                {{ imgEl }}
+                <span style="position: absolute; left: 8px; bottom: 8px; background: rgba(13,20,33,.72); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 7px;">รูปกลุ่ม {{ imgCodeLabel }}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ liveLoading }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 8px; margin: 2px 2px 10px; color: #0f766e; font-size: 12px; font-weight: 600;">
+                <span style="width: 13px; height: 13px; border: 2px solid #bfe0df; border-top-color: #0f766e; border-radius: 50%; animation: spin .7s linear infinite;"></span>
+                กำลังดึงข้อมูลล่าสุดจาก Google Sheet…
+              </div>
+            </sc-if>
+            <!-- detail fields -->
+            <div style="background: #fff; border-radius: 16px; padding: 4px 15px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+              <sc-for list="{{ detailFields }}" as="d" hint-placeholder-count="4">
+                <div style="display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid {{ d.border }};">
+                  <span style="flex-shrink: 0; width: 94px; font-size: 12.5px; color: #90a0aa; font-weight: 600;">{{ d.label }}</span>
+                  <span style="flex: 1; font-size: 13.5px; color: #223038; font-weight: 500; word-break: break-word; line-height: 1.45;">{{ d.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- status buttons -->
+            <div style="margin-top: 18px; display: flex; align-items: center; gap: 8px;">
+              <span style="width: 3px; height: 15px; border-radius: 999px; background: #0f766e;"></span>
+              <div style="font-size: 13px; font-weight: 700; color: #2b3b44;">อัปเดตสถานะสติกเกอร์</div>
+            </div>
+            <div style="margin-top: 9px; display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{ statusOptions }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.onClick }}" style="display: flex; align-items: center; gap: 12px; padding: 15px 15px; border-radius: 15px; background: {{ o.bg }}; box-shadow: inset 0 0 0 2px {{ o.border }}; text-align: left;">
+                  <span style="width: 23px; height: 23px; border-radius: 50%; box-shadow: inset 0 0 0 2px {{ o.dot }}; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                    <span style="width: 11px; height: 11px; border-radius: 50%; background: {{ o.innerDot }};"></span>
+                  </span>
+                  <span style="font-size: 14.5px; font-weight: 700; color: {{ o.textColor }};">{{ o.label }}</span>
+                </button>
+              </sc-for>
+            </div>
+
+            <!-- location -->
+            <div style="margin-top: 18px; display: flex; align-items: center; gap: 8px;">
+              <span style="width: 3px; height: 15px; border-radius: 999px; background: #0f766e;"></span>
+              <div style="font-size: 13px; font-weight: 700; color: #2b3b44;">อัปเดตที่ตั้ง</div>
+            </div>
+            <div style="margin-top: 9px; background: #fff; border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 2px rgba(15,28,34,.04), 0 3px 10px rgba(15,28,34,.04);">
+              <label style="display: block;">
+                <span style="font-size: 12px; color: #8695a0; font-weight: 600;">ชั้น</span>
+                <input value="{{ draftFloor }}" onChange="{{ onDraftFloor }}" list="dl-floors" placeholder="เลือกหรือพิมพ์" style="width: 100%; margin-top: 5px; padding: 12px 13px; border-radius: 12px; border: 1.5px solid #dde4ea; font-size: 14px; background: #f7f9fb; color: #16232b;">
+              </label>
+              <label style="display: block;">
+                <span style="font-size: 12px; color: #8695a0; font-weight: 600;">แผนก</span>
+                <input value="{{ draftDept }}" onChange="{{ onDraftDept }}" list="dl-depts" placeholder="เลือกหรือพิมพ์" style="width: 100%; margin-top: 5px; padding: 12px 13px; border-radius: 12px; border: 1.5px solid #dde4ea; font-size: 14px; background: #f7f9fb; color: #16232b;">
+              </label>
+              <label style="display: block;">
+                <span style="font-size: 12px; color: #8695a0; font-weight: 600;">ห้อง</span>
+                <input value="{{ draftRoom }}" onChange="{{ onDraftRoom }}" list="dl-rooms" placeholder="เลือกหรือพิมพ์" style="width: 100%; margin-top: 5px; padding: 12px 13px; border-radius: 12px; border: 1.5px solid #dde4ea; font-size: 14px; background: #f7f9fb; color: #16232b;">
+              </label>
+            </div>
+
+            <div style="height: 16px;"></div>
+          </div>
+
+          <!-- save bar -->
+          <div style="position: sticky; bottom: 0; background: linear-gradient(180deg, rgba(241,244,247,0), #f1f4f7 30%); padding: 16px 18px calc(17px + env(safe-area-inset-bottom));">
+            <button onClick="{{ onSaveCurrent }}" style="width: 100%; padding: 16px; border-radius: 16px; font-size: 15.5px; font-weight: 700; color: #fff; background: {{ saveBtnBg }}; opacity: {{ saveBtnOpacity }}; box-shadow: 0 6px 18px rgba(15,118,110,.28);">{{ saveBtnLabel }}</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- datalists -->
+    <datalist id="dl-floors"><sc-for list="{{ floorOpts }}" as="o" hint-placeholder-count="0"><option value="{{ o }}"></option></sc-for></datalist>
+    <datalist id="dl-depts"><sc-for list="{{ deptOpts }}" as="o" hint-placeholder-count="0"><option value="{{ o }}"></option></sc-for></datalist>
+    <datalist id="dl-rooms"><sc-for list="{{ roomOpts }}" as="o" hint-placeholder-count="0"><option value="{{ o }}"></option></sc-for></datalist>
+
+    <!-- toast -->
+    <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 80; max-width: 92%; background: {{ toastBg }}; color: #fff; padding: 13px 19px; border-radius: 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 12px 34px rgba(11,28,34,.3); display: flex; align-items: center; gap: 10px; animation: pop .25s; line-height: 1.4;">
+        <span style="font-size: 15px; flex-shrink: 0;">{{ toastIcon }}</span>{{ toastMsg }}
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const STATUS = {
+  'ติดแล้ว พื้นผิวปกติ': { color: '#16a34a', bg: '#dcfce7', short: 'ปกติ' },
+  'ติดแล้ว พิ้นผิวโลหะ': { color: '#2563eb', bg: '#dbeafe', short: 'โลหะ' },
+  'ไม่พบ':              { color: '#dc2626', bg: '#fee2e2', short: 'ไม่พบ' },
+};
+const STATUS_ORDER = ['ติดแล้ว พื้นผิวปกติ', 'ติดแล้ว พิ้นผิวโลหะ', 'ไม่พบ'];
+const LS_EDITS = 'qrinv.edits.v1';
+const LS_HOOK  = 'qrinv.webhook.v1';
+const LS_RECENT = 'qrinv.recent.v1';
+const LS_IMGBASE = 'qrinv.imgbase.v1';
+const LS_REMOTE = 'qrinv.remote.v1';
+const IMG_EXTS = ['.jpg', '.jpeg', '.png'];
+// URL กลางของระบบ (ฝังมาให้แล้ว) — ทุกเครื่องจึงเห็นข้อมูลชุดเดียวกันทันทีที่เปิดแอป
+const DEFAULT_HOOK = 'https://script.google.com/macros/s/AKfycbwNH1qDJ_KfHk0VZGi5yQMS4F4ckK5eUekcYUDQ2afHf05_cwrBhQO8EoOQgZICTzZVZQ/exec';
+
+const ICONS = {
+  scan: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a1 1 0 0 1 1-1h2M20 7V5a1 1 0 0 0-1-1h-2M4 17v2a1 1 0 0 0 1 1h2M20 17v2a1 1 0 0 1-1 1h-2M3 12h18"/></svg>',
+  list: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  chart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="13" y="7" width="3" height="10"/></svg>',
+  gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+};
+
+class Component extends DCLogic {
+  videoRef = React.createRef();
+  canvasRef = React.createRef();
+  manualRef = React.createRef();
+
+  state = {
+    loading: true,
+    assets: [],
+    options: { floors: [], depts: [], rooms: [] },
+    edits: {},
+    view: 'scan',
+    cameraOn: false,
+    continuous: false,
+    manualCode: '',
+    recent: [],
+    current: null,       // asset object
+    draft: null,         // { status, floor, dept, room }
+    liveData: {},        // ค่าจริงจาก Sheet (XLOOKUP) cache by code
+    remote: {},          // สถานะ/ที่ตั้งล่าสุดจาก Sheet (ดึงแบบ bulk) by code
+    liveLoading: false,
+    imgBase: 'images/',  // โฟลเดอร์รูป
+    imgUrl: '',          // URL รูปที่ยืนยันแล้วว่ามีจริง
+    imgStatus: 'idle',   // idle | loading | ok | none
+    searchTerm: '',
+    filterStatus: 'all',
+    filterFloor: '',
+    listLimit: 50,
+    webhookUrl: '',
+    connMsg: null,       // { type:'ok'|'err'|'info', text }
+    syncing: false,
+    toast: null,
+  };
+
+  // ---------- lifecycle ----------
+  componentDidMount() {
+    try { this.setState({ edits: JSON.parse(localStorage.getItem(LS_EDITS) || '{}') }); } catch (e) {}
+    try {
+      const saved = (localStorage.getItem(LS_HOOK) || '').trim();
+      this.setState({ webhookUrl: saved || DEFAULT_HOOK });
+    } catch (e) { this.setState({ webhookUrl: DEFAULT_HOOK }); }
+    try { this.setState({ recent: JSON.parse(localStorage.getItem(LS_RECENT) || '[]') }); } catch (e) {}
+    try { const ib = localStorage.getItem(LS_IMGBASE); if (ib != null) this.setState({ imgBase: ib }); } catch (e) {}
+    try { this.setState({ remote: JSON.parse(localStorage.getItem(LS_REMOTE) || '{}') }); } catch (e) {}
+    this.loadData();
+  }
+  componentWillUnmount() { this.stopCamera(); }
+
+  async loadData() {
+    const embedded = () => (window.__ASSETS__ && window.__OPTIONS__)
+      ? { a: window.__ASSETS__, o: window.__OPTIONS__ } : null;
+    try {
+      let emb = embedded();
+      if (!emb) {
+        // โหมดพัฒนา: ลองโหลดจากโฟลเดอร์ data/ ก่อน
+        try {
+          const r = await fetch('data/assets.json');
+          if (r.ok) {
+            const a = await r.json();
+            const o = await fetch('data/options.json').then(x => x.json());
+            return this.applyData(a, o);
+          }
+        } catch (e) {}
+        // ไฟล์เดียวแบบ standalone: ข้อมูลฝัง (embedded.js) โหลดแบบ async — รอจนพร้อม
+        for (let i = 0; i < 240 && !embedded(); i++) await new Promise(res => setTimeout(res, 75));
+        emb = embedded();
+      }
+      if (emb) this.applyData(emb.a, emb.o);
+      else this.setState({ loading: false, toast: { type: 'err', text: 'โหลดข้อมูลไม่สำเร็จ' } });
+    } catch (e) {
+      this.setState({ loading: false, toast: { type: 'err', text: 'โหลดข้อมูลไม่สำเร็จ' } });
+    }
+  }
+  applyData(a, o) {
+    this.index = new Map();
+    this.indexStripped = new Map();   // คีย์แบบตัดขีด/ช่องว่าง สำหรับค้นแบบยืดหยุ่น
+    for (const it of a) {
+      this.index.set(this.norm(it.code), it);
+      const sk = this.stripKey(it.code);
+      if (sk && !this.indexStripped.has(sk)) this.indexStripped.set(sk, it);
+    }
+    this.setState({ assets: a, options: o, loading: false });
+    this.focusSearch();
+    if (this.state.webhookUrl.trim()) this.pullFromSheet(true);   // ดึงสถานะล่าสุดจาก Sheet อัตโนมัติ
+  }
+  focusSearch() {   // เคอร์เซอร์ไปที่ช่องกรอกรหัสเสมอ (เหมาะกับเครื่องยิงบาร์โค้ด)
+    setTimeout(() => {
+      const el = this.manualRef.current;
+      if (el && this.state.view === 'scan' && !this.state.current) el.focus();
+    }, 80);
+  }
+
+  // ---------- helpers ----------
+  norm(s) { return String(s == null ? '' : s).trim().toUpperCase(); }
+  stripKey(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^0-9A-Z]/g, ''); }  // เหลือแต่ตัวเลข+ตัวอักษร
+  findAsset(raw) {
+    if (!this.index) return null;
+    let s = String(raw == null ? '' : raw).trim();
+    if (!s) return null;
+    // 1) ตรงเป๊ะ
+    let hit = this.index.get(this.norm(s));
+    if (hit) return hit;
+    // 2) ถ้าเป็น URL/ข้อความยาว ลองดึงรหัสรูปแบบ 99-9999999999-9999 ออกมา
+    const m = s.match(/\d{2}-\d{9,11}-\d{3,5}(?:\/\d+)?/);
+    if (m) { hit = this.index.get(this.norm(m[0])); if (hit) return hit; }
+    // 3) ตัดขีด/ช่องว่าง/อักขระอื่นทิ้งแล้วเทียบ
+    const sk = this.stripKey(m ? m[0] : s);
+    if (sk) { hit = this.indexStripped.get(sk); if (hit) return hit; }
+    // 4) ตัวเลขล้วน — เทียบกับรหัสที่ตัดอักขระแล้ว (เผื่อ QR เก็บเฉพาะตัวเลข)
+    const digits = s.replace(/\D/g, '');
+    if (digits.length >= 12) { hit = this.indexStripped.get(digits); if (hit) return hit; }
+    return null;
+  }
+  clean(v) {   // ตัดค่า error จากสูตรใน Sheet (#NAME? #REF! ฯลฯ) ออก
+    const s = String(v == null ? '' : v).trim();
+    if (/^#(NAME\?|REF!|VALUE!|N\/A|DIV\/0!|NULL!|NUM!|ERROR!|CALC!|SPILL!|GETTING_DATA)$/i.test(s)) return '';
+    return s;
+  }
+  normFloor(s) {
+    s = this.clean(s);
+    const m = s.match(/^(\d+)$/);
+    if (m) return 'ชั้น ' + m[1];
+    return s;
+  }
+  imgCodeFor(name) {   // ดึงรหัสกลุ่มรูปจากต้นชื่อทรัพย์สิน เช่น "PCH-14 STAFF LOUNGE" → "PCH-14"
+    const m = this.clean(name).match(/^([A-Z]{1,5}-\d+[A-Z]?)\b/);
+    return m ? m[1] : '';
+  }
+  persistEdits(edits) { try { localStorage.setItem(LS_EDITS, JSON.stringify(edits)); } catch (e) {} }
+  persistRecent(recent) { try { localStorage.setItem(LS_RECENT, JSON.stringify(recent)); } catch (e) {} }
+  effStatus(code) {
+    const k = this.norm(code);
+    const e = this.state.edits[k]; if (e && e.status) return e.status;
+    const r = this.state.remote[k]; if (r && r.status) return this.clean(r.status);
+    const a = this.index && this.index.get(k); return a ? a.status : '';
+  }
+  async pullFromSheet(silent) {
+    const url = this.state.webhookUrl.trim();
+    if (!url) { if (!silent) { this.setState({ view: 'settings' }); this.showToast('err', 'ยังไม่ได้ตั้งค่า Google Sheet', 2400); } return; }
+    if (!silent) this.setState({ syncing: true });
+    try {
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=pull');
+      const data = await res.json();
+      if (data && data.ok && Array.isArray(data.rows)) {
+        const remote = {};
+        for (const r of data.rows) {
+          const st = (r.status || '').trim(), fl = (r.floor || '').trim(), dp = (r.dept || '').trim(), rm = (r.room || '').trim();
+          if (st || fl || dp || rm) remote[this.norm(r.code)] = { status: st, floor: fl, dept: dp, room: rm };
+        }
+        this.setState({ remote });
+        try { localStorage.setItem(LS_REMOTE, JSON.stringify(remote)); } catch (e) {}
+        if (!silent) this.showToast('ok', 'ดึงข้อมูลล่าสุดจาก Sheet แล้ว (' + Object.keys(remote).length + ' รายการที่ตรวจ)', 2600);
+      } else if (!silent) this.showToast('err', 'ดึงข้อมูลไม่สำเร็จ', 2400);
+    } catch (e) { if (!silent) this.showToast('err', 'ดึงข้อมูลไม่สำเร็จ — ตรวจการเชื่อมต่อ', 2400); }
+    if (!silent) this.setState({ syncing: false });
+  }
+  beep(ok) {
+    try {
+      const ac = this._ac || (this._ac = new (window.AudioContext || window.webkitAudioContext)());
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.connect(g); g.connect(ac.destination);
+      o.frequency.value = ok ? 880 : 280;
+      g.gain.setValueAtTime(0.0001, ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.18);
+      o.start(); o.stop(ac.currentTime + 0.2);
+    } catch (e) {}
+  }
+  showToast(type, text, ms) {
+    this.setState({ toast: { type, text } });
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toast: null }), ms || 2200);
+  }
+
+  // ---------- camera ----------
+  async toggleCamera() { if (this.state.cameraOn) this.stopCamera(); else await this.startCamera(); }
+  async startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      this._stream = stream;
+      this.setState({ cameraOn: true }, () => {
+        const v = this.videoRef.current;
+        if (v) { v.srcObject = stream; v.play().catch(() => {}); }
+        this._lastHit = { code: '', t: 0 };
+        this._raf = requestAnimationFrame(() => this.scanLoop());
+      });
+    } catch (e) {
+      this.showToast('err', 'เปิดกล้องไม่ได้ — อนุญาตสิทธิ์กล้องแล้วลองใหม่', 3200);
+    }
+  }
+  stopCamera() {
+    cancelAnimationFrame(this._raf);
+    if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+    if (this.videoRef.current) this.videoRef.current.srcObject = null;
+    if (this.state.cameraOn) this.setState({ cameraOn: false });
+  }
+  scanLoop() {
+    if (!this.state.cameraOn) return;
+    const v = this.videoRef.current, c = this.canvasRef.current;
+    // pause detection while a sheet is open and not in continuous mode
+    const paused = this.state.current && !this.state.continuous;
+    if (!paused && v && c && v.readyState >= 2 && window.jsQR) {
+      const w = v.videoWidth, h = v.videoHeight;
+      if (w && h) {
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(v, 0, 0, w, h);
+        try {
+          const img = ctx.getImageData(0, 0, w, h);
+          const res = window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+          if (res && res.data) this.onDetected(res.data.trim());
+        } catch (e) {}
+      }
+    }
+    this._raf = requestAnimationFrame(() => this.scanLoop());
+  }
+  onDetected(raw) {
+    const now = Date.now();
+    if (this._lastHit && this._lastHit.code === raw && now - this._lastHit.t < 2500) return;
+    this._lastHit = { code: raw, t: now };
+    this.lookup(raw);
+  }
+
+  // ---------- lookup / detail ----------
+  async lookup(raw) {
+    const asset = this.findAsset(raw);
+    if (asset) {
+      const already = !!this.effStatus(asset.code);
+      this.beep(true);
+      if (!this.state.continuous) this.stopCamera();   // เจอแล้วปิดกล้องทันที (ยกเว้นโหมดสแกนต่อเนื่อง)
+      if (already) this.showToast('info', 'รายการนี้ตรวจแล้ว — เปิดเพื่อแก้ไข', 1800);
+      this.openDetail(asset);
+      this.pushRecent({ code: asset.code, found: true });
+      return;
+    }
+    // หาในเครื่องไม่เจอ — ลองค้นสดจาก Google Sheet (เผื่อเป็นรายการที่เพิ่มใหม่ภายหลัง)
+    const url = this.state.webhookUrl.trim();
+    const code = this.codeFromRaw(raw);
+    if (url && code) {
+      this.showToast('info', 'กำลังค้นหาใน Google Sheet…', 4000);
+      const found = await this.lookupRemote(code);
+      if (found) {
+        this.beep(true);
+        if (!this.state.continuous) this.stopCamera();
+        this.openDetail(found);
+        this.pushRecent({ code: found.code, found: true });
+        return;
+      }
+    }
+    this.beep(false);
+    this.showToast('err', 'ไม่พบรหัส "' + raw + '" ในฐานข้อมูล', 2600);
+    this.pushRecent({ code: raw, found: false });
+  }
+  codeFromRaw(raw) {   // ดึงรหัสรูปแบบครุภัณฑ์จากข้อความ/URL ที่สแกนมา
+    const s = String(raw == null ? '' : raw).trim();
+    const m = s.match(/\d{2}-\d{9,11}-\d{3,5}(?:\/\d+)?/);
+    return m ? m[0] : s;
+  }
+  async lookupRemote(code) {   // ดึงรายละเอียดรายตัวสดจาก Sheet แล้วสร้าง asset
+    const url = this.state.webhookUrl.trim();
+    if (!url) return null;
+    try {
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=item&code=' + encodeURIComponent(code));
+      const data = await res.json();
+      if (data && data.ok && data.item) {
+        const it = data.item;
+        const asset = {
+          code: this.clean(it.code) || code, name: this.clean(it.name), note: this.clean(it.note),
+          origLoc: this.clean(it.origLoc), placeLoc: this.clean(it.placeLoc), workType: this.clean(it.workType),
+          status: this.clean(it.status), ak: this.clean(it.floor), al: this.clean(it.dept), am: this.clean(it.room),
+          srcFloor: '', srcDept: '',
+        };
+        // เก็บเข้า index ในเครื่องไว้ใช้รอบต่อไป
+        if (this.index) { this.index.set(this.norm(asset.code), asset); const sk = this.stripKey(asset.code); if (sk && !this.indexStripped.has(sk)) this.indexStripped.set(sk, asset); }
+        const liveData = { ...this.state.liveData, [this.norm(asset.code)]: it };
+        this.setState({ liveData });
+        return asset;
+      }
+    } catch (e) {}
+    return null;
+  }
+  openDetail(asset) {
+    const k = this.norm(asset.code);
+    const e = this.state.edits[k] || {};
+    const r = this.state.remote[k] || {};
+    const draft = {
+      status: e.status || this.clean(r.status) || asset.status || '',
+      floor:  e.floor  != null && e.floor  !== '' ? e.floor : (this.clean(r.floor) || this.clean(asset.ak) || this.normFloor(asset.srcFloor) || ''),
+      dept:   e.dept   != null && e.dept   !== '' ? e.dept  : (this.clean(r.dept) || this.clean(asset.al) || this.clean(asset.srcDept) || ''),
+      room:   e.room   != null && e.room   !== '' ? e.room  : (this.clean(r.room) || this.clean(asset.am) || ''),
+    };
+    this.setState({ current: asset, draft, imgUrl: '', imgStatus: this.imgCodeFor(asset.name) ? 'loading' : 'none' });
+    this.fetchLiveItem(asset.code);
+    const ic = this.imgCodeFor(asset.name);
+    if (ic) this.resolveImage(ic);
+  }
+  async resolveImage(code) {
+    // ตรวจว่ามีไฟล์รูปจริงด้วย fetch ก่อน (404 จาก fetch ไม่ทำให้ขึ้นแถบ error) แล้วค่อยแสดง <img>
+    const token = (this._imgReq = (this._imgReq || 0) + 1);
+    const base = this.state.imgBase || 'images/';
+    for (const ext of IMG_EXTS) {
+      const url = base + encodeURIComponent(code) + ext;
+      let ok = false;
+      try { const r = await fetch(url); ok = r.ok; } catch (e) { ok = false; }
+      if (token !== this._imgReq) return;            // เปิดรายการอื่นแล้ว ยกเลิก
+      if (ok) { this.setState({ imgUrl: url, imgStatus: 'ok' }); return; }
+    }
+    if (token === this._imgReq) this.setState({ imgStatus: 'none' });
+  }
+  closeDetail() { this._imgReq = (this._imgReq || 0) + 1; this.setState({ current: null, draft: null, liveLoading: false, imgUrl: '', imgStatus: 'idle' }); this.focusSearch(); }
+
+  async fetchLiveItem(code) {
+    const url = this.state.webhookUrl.trim();
+    if (!url) return;                                   // ไม่ได้เชื่อม Sheet ก็ใช้ค่าฝัง
+    const key = this.norm(code);
+    if (this.state.liveData[key]) { this.applyLiveToDraft(key, this.state.liveData[key]); return; }
+    this.setState({ liveLoading: true });
+    try {
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=item&code=' + encodeURIComponent(code));
+      const data = await res.json();
+      if (data && data.ok && data.item) {
+        const liveData = { ...this.state.liveData, [key]: data.item };
+        this.setState({ liveData, liveLoading: false });
+        this.applyLiveToDraft(key, data.item);
+      } else { this.setState({ liveLoading: false }); }
+    } catch (e) { this.setState({ liveLoading: false }); }
+  }
+  applyLiveToDraft(key, item) {
+    // เติมสถานะ/ที่ตั้งล่าสุดจาก Sheet ลงในฟอร์ม เฉพาะเมื่อผู้ใช้ยังไม่ได้แก้ในเครื่อง
+    if (!this.state.current || this.norm(this.state.current.code) !== key) return;
+    if (this.state.edits[key]) return;                  // มีการแก้ในเครื่องแล้ว ไม่ทับ
+    const d = this.state.draft || {};
+    this.setState({ draft: {
+      status: this.clean(item.status) || d.status || '',
+      floor:  this.clean(item.floor)  || d.floor  || '',
+      dept:   this.clean(item.dept)   || d.dept   || '',
+      room:   this.clean(item.room)   || d.room   || '',
+    } });
+  }
+
+  setDraftStatus(s) { this.setState({ draft: { ...this.state.draft, status: s } }); }
+  setDraft(field, val) { this.setState({ draft: { ...this.state.draft, [field]: val } }); }
+
+  async saveCurrent() {
+    const cur = this.state.current, d = this.state.draft;
+    if (!cur || !d || !d.status) { this.showToast('err', 'เลือกสถานะก่อนบันทึก', 1800); return; }
+    const key = this.norm(cur.code);
+    const rec = {
+      code: cur.code, status: d.status,
+      floor: d.floor || '', dept: d.dept || '', room: d.room || '',
+      scannedAt: new Date().toISOString(), synced: false,
+    };
+    const edits = { ...this.state.edits, [key]: rec };
+    this.persistEdits(edits);
+    this.setState({ edits });
+    this.closeDetail();
+    const url = this.state.webhookUrl.trim();
+    if (!url) {
+      this.showToast('err', 'ยังไม่ได้เชื่อม Google Sheet — บันทึกไว้ในเครื่องก่อน ไปแท็บตั้งค่าเพื่อเชื่อมแล้วกดซิงค์', 3400);
+      return;
+    }
+    this.showToast('info', 'กำลังบันทึกขึ้นระบบ…', 5000);
+    const ok = await this.pushSync([rec]);
+    this.showToast(ok ? 'ok' : 'err',
+      ok ? ('บันทึกขึ้นระบบแล้ว: ' + (STATUS[d.status] ? STATUS[d.status].short : d.status))
+         : 'ซิงค์ไม่สำเร็จ เก็บไว้ในเครื่องก่อน — กดซิงค์อีกครั้งในแท็บตั้งค่า', ok ? 2000 : 3200);
+  }
+
+  pushRecent(item) {
+    const stamp = new Date();
+    const time = stamp.getHours().toString().padStart(2, '0') + ':' + stamp.getMinutes().toString().padStart(2, '0');
+    const entry = { code: item.code, found: item.found, time, ts: stamp.getTime() };
+    const recent = [entry, ...this.state.recent.filter(r => !(r.code === item.code))].slice(0, 12);
+    this.persistRecent(recent);
+    this.setState({ recent });
+  }
+
+  // ---------- sync ----------
+  async pushSync(recs) {
+    const url = this.state.webhookUrl.trim();
+    if (!url) return;
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ updates: recs.map(r => ({ code: r.code, status: r.status, floor: r.floor, dept: r.dept, room: r.room })) }) });
+      const data = await res.json();
+      if (data && data.ok) {
+        const edits = { ...this.state.edits };
+        recs.forEach(r => { if (edits[this.norm(r.code)]) edits[this.norm(r.code)].synced = true; });
+        this.persistEdits(edits); this.setState({ edits });
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  async syncNow() {
+    const url = this.state.webhookUrl.trim();
+    if (!url) { this.setState({ view: 'settings' }); this.showToast('err', 'ยังไม่ได้ตั้งค่า Google Sheet', 2400); return; }
+    const pending = Object.values(this.state.edits).filter(e => !e.synced);
+    if (!pending.length) { this.showToast('info', 'ไม่มีรายการค้างซิงค์', 1800); return; }
+    this.setState({ syncing: true });
+    const ok = await this.pushSync(pending);
+    this.setState({ syncing: false });
+    this.showToast(ok ? 'ok' : 'err', ok ? 'ซิงค์สำเร็จ ' + pending.length + ' รายการ' : 'ซิงค์ไม่สำเร็จ ตรวจการเชื่อมต่อ', 2600);
+  }
+  setWebhook(v) { this.setState({ webhookUrl: v }); try { localStorage.setItem(LS_HOOK, v.trim()); } catch (e) {} }
+  async testConn() {
+    const url = this.state.webhookUrl.trim();
+    if (!url) { this.setState({ connMsg: { type: 'err', text: 'ใส่ Web App URL ก่อน' } }); return; }
+    this.setState({ connMsg: { type: 'info', text: 'กำลังทดสอบ…' } });
+    try {
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=ping');
+      const data = await res.json();
+      if (data && data.ok) this.setState({ connMsg: { type: 'ok', text: '✓ เชื่อมต่อสำเร็จ — ชีต "' + data.sheet + '" ' + data.rows + ' แถว' } });
+      else this.setState({ connMsg: { type: 'err', text: 'ตอบกลับผิดพลาด: ' + (data.error || '?') } });
+    } catch (e) {
+      this.setState({ connMsg: { type: 'err', text: 'เชื่อมต่อไม่ได้ — ตรวจ URL และตั้ง Access = Anyone' } });
+    }
+  }
+
+  exportCsv() {
+    const rows = Object.values(this.state.edits);
+    if (!rows.length) { this.showToast('info', 'ยังไม่มีรายการที่ตรวจ', 1800); return; }
+    const head = ['รหัสครุภัณฑ์(B)', 'สติกเกอร์(AJ)', 'ชั้น(AK)', 'แผนก(AL)', 'ห้อง(AM)', 'เวลา'];
+    const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const lines = [head.map(esc).join(',')];
+    rows.forEach(r => lines.push([r.code, r.status, r.floor, r.dept, r.room, r.scannedAt].map(esc).join(',')));
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ตรวจนับครุภัณฑ์_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  resetLocal() {
+    if (!confirm('ล้างผลการตรวจที่บันทึกในเครื่องนี้ทั้งหมด? (ข้อมูลที่ซิงค์ขึ้น Sheet แล้วจะไม่ถูกลบ)')) return;
+    this.persistEdits({}); this.setState({ edits: {} });
+    this.showToast('ok', 'ล้างข้อมูลในเครื่องแล้ว');
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const s = this.state;
+    const fmt = n => n.toLocaleString('en-US');
+    const ready = !s.loading;
+
+    // sync chip
+    const pending = Object.values(s.edits).filter(e => !e.synced).length;
+    const hasHook = !!s.webhookUrl.trim();
+    let syncChipLabel, syncDotColor, syncChipBg = '#eef1f5', syncChipColor = '#45556b';
+    if (s.syncing) { syncChipLabel = 'กำลังซิงค์…'; syncDotColor = '#f59e0b'; }
+    else if (!hasHook) { syncChipLabel = 'ยังไม่เชื่อม'; syncDotColor = '#c0392b'; syncChipBg = '#fde8e6'; syncChipColor = '#c0392b'; }
+    else if (pending) { syncChipLabel = 'ค้าง ' + pending; syncDotColor = '#f59e0b'; syncChipBg = '#fff3da'; syncChipColor = '#a06a00'; }
+    else { syncChipLabel = 'ซิงค์แล้ว'; syncDotColor = '#16a34a'; syncChipBg = '#dcfce7'; syncChipColor = '#15803d'; }
+
+    // nav
+    const nav = [['scan', 'สแกน', 'scan'], ['list', 'รายการ', 'list'], ['progress', 'สรุป', 'chart'], ['settings', 'ตั้งค่า', 'gear']];
+    const navItems = nav.map(([id, label, ic]) => {
+      const active = s.view === id;
+      return {
+        label, icon: { __html: ICONS[ic] },
+        color: active ? '#0f766e' : '#95a5af',
+        bg: active ? '#e2f0ee' : 'transparent',
+        onClick: () => { if (id !== 'scan' && s.cameraOn) this.stopCamera(); this.setState({ view: id }); if (id === 'scan') this.focusSearch(); },
+      };
+    });
+
+    // ---- stats ----
+    const counts = { 'ติดแล้ว พื้นผิวปกติ': 0, 'ติดแล้ว พิ้นผิวโลหะ': 0, 'ไม่พบ': 0 };
+    let checked = 0;
+    for (const a of s.assets) {
+      const st = this.effStatus(a.code);
+      if (st) { checked++; if (counts[st] != null) counts[st]++; }
+    }
+    const total = s.assets.length;
+    const pct = total ? Math.round(checked / total * 100) : 0;
+    const statCards = [
+      { label: 'ปกติ', color: STATUS['ติดแล้ว พื้นผิวปกติ'].color, count: fmt(counts['ติดแล้ว พื้นผิวปกติ']) },
+      { label: 'โลหะ', color: STATUS['ติดแล้ว พิ้นผิวโลหะ'].color, count: fmt(counts['ติดแล้ว พิ้นผิวโลหะ']) },
+      { label: 'ไม่พบ', color: STATUS['ไม่พบ'].color, count: fmt(counts['ไม่พบ']) },
+      { label: 'ยังไม่ตรวจ', color: '#94a3b8', count: fmt(total - checked) },
+    ];
+
+    // floor progress (by srcFloor normalized)
+    const fp = new Map();
+    for (const a of s.assets) {
+      const fl = this.normFloor(a.srcFloor) || 'ไม่ระบุชั้น';
+      if (!fp.has(fl)) fp.set(fl, { total: 0, checked: 0 });
+      const o = fp.get(fl); o.total++; if (this.effStatus(a.code)) o.checked++;
+    }
+    const floorNum = f => { const m = String(f).match(/\d+/); return m ? parseInt(m[0]) : (f.includes('ใต้ดิน') ? -1 : 999); };
+    const floorProgress = [...fp.entries()].map(([floor, o]) => ({
+      floor, total: fmt(o.total), checked: fmt(o.checked),
+      pct: o.total ? Math.round(o.checked / o.total * 100) : 0,
+      barColor: '#0f766e',
+    })).sort((a, b) => floorNum(a.floor) - floorNum(b.floor));
+
+    // work-type progress (by AO / workType)
+    const wp = new Map();
+    for (const a of s.assets) {
+      const w = this.clean(a.workType) || 'ไม่ระบุประเภท';
+      if (!wp.has(w)) wp.set(w, { total: 0, checked: 0 });
+      const o = wp.get(w); o.total++; if (this.effStatus(a.code)) o.checked++;
+    }
+    const workProgress = [...wp.entries()].map(([work, o]) => ({
+      work, total: fmt(o.total), checked: fmt(o.checked), rawTotal: o.total,
+      pct: o.total ? Math.round(o.checked / o.total * 100) : 0,
+      barColor: '#7c4ddb',
+    })).sort((a, b) => b.rawTotal - a.rawTotal);
+
+    // ---- list ----
+    const term = s.searchTerm.trim().toUpperCase();
+    let filtered = s.assets;
+    if (term) filtered = filtered.filter(a => this.norm(a.code).includes(term) || (a.name || '').toUpperCase().includes(term));
+    if (s.filterFloor) filtered = filtered.filter(a => this.normFloor(a.srcFloor) === s.filterFloor);
+    if (s.filterStatus !== 'all') {
+      filtered = filtered.filter(a => {
+        const st = this.effStatus(a.code);
+        if (s.filterStatus === 'unchecked') return !st;
+        if (s.filterStatus === 'checked') return !!st && st !== 'ไม่พบ';
+        if (s.filterStatus === 'notfound') return st === 'ไม่พบ';
+        return true;
+      });
+    }
+    const listTotal = filtered.length;
+    const visibleList = filtered.slice(0, s.listLimit).map(a => {
+      const st = this.effStatus(a.code);
+      const meta = st ? (STATUS[st] || { bg: '#eef1f5', color: '#6b7688', short: st }) : null;
+      return {
+        code: a.code, name: a.name || '—',
+        srcLabel: [this.normFloor(a.srcFloor), this.clean(a.srcDept)].filter(Boolean).join(' · ') || '—',
+        badge: meta ? meta.short : 'ยังไม่ตรวจ',
+        badgeBg: meta ? meta.bg : '#eef1f5',
+        badgeColor: meta ? meta.color : '#94a3b8',
+        onOpen: () => this.openDetail(a),
+      };
+    });
+    const statusFilterDefs = [['all', 'ทั้งหมด'], ['unchecked', 'ยังไม่ตรวจ'], ['checked', 'ตรวจแล้ว'], ['notfound', 'ไม่พบ']];
+    const statusFilters = statusFilterDefs.map(([id, label]) => {
+      const active = s.filterStatus === id;
+      return { label, onClick: () => this.setState({ filterStatus: id, listLimit: 50 }),
+        bg: active ? '#0f766e' : '#fff', color: active ? '#fff' : '#55666f', border: active ? '#0f766e' : '#e0e7eb' };
+    });
+    const floorFilterOpts = [...new Set(s.assets.map(a => this.normFloor(a.srcFloor)).filter(Boolean))]
+      .sort((a, b) => floorNum(a) - floorNum(b));
+
+    // recent
+    const recentScans = s.recent.map(r => {
+      const a = this.index ? this.index.get(this.norm(r.code)) : null;
+      const st = r.found ? this.effStatus(r.code) : '';
+      const meta = st ? STATUS[st] : null;
+      return {
+        code: r.code, time: r.time,
+        label: !r.found ? 'ไม่พบในฐานข้อมูล' : (a ? (a.name || '—') : '—'),
+        dotColor: !r.found ? '#dc2626' : (meta ? meta.color : '#94a3b8'),
+        dotBg: !r.found ? '#fee2e2' : (meta ? meta.bg : '#eef1f4'),
+        onOpen: () => { if (a) this.openDetail(a); else this.showToast('err', 'ไม่พบรหัสนี้', 1800); },
+      };
+    });
+
+    // ---- detail ----
+    const cur = s.current;
+    const d = s.draft || {};
+    let detailFields = [], statusOptions = [], curAlreadyChecked = false, curPrevStatus = '', curPrevBg = '', curPrevColor = '';
+    let saveBtnBg = '#0f766e', saveBtnLabel = 'บันทึกผลการตรวจ', saveBtnOpacity = 1;
+    if (cur) {
+      const live = s.liveData[this.norm(cur.code)];   // ค่าจริงจาก Sheet (ถ้าดึงมาได้)
+      const g = (k, emb) => { const lv = live ? this.clean(live[k]) : ''; return lv || this.clean(emb); };
+      const f = [
+        ['รหัสครุภัณฑ์', cur.code], ['ชื่อทรัพย์สิน', g('name', cur.name)], ['หมายเหตุ', g('note', cur.note)],
+        ['ที่ตั้งเดิม', g('origLoc', cur.origLoc)], ['New! Location', g('placeLoc', cur.placeLoc)], ['ประเภทงาน', g('workType', cur.workType)],
+      ];
+      detailFields = f.map((x, i) => ({ label: x[0], value: x[1] ? x[1] : '—', border: i === f.length - 1 ? 'transparent' : '#f0f2f5' }));
+      statusOptions = STATUS_ORDER.map(st => {
+        const m = STATUS[st]; const sel = d.status === st;
+        return { label: st, onClick: () => this.setDraftStatus(st),
+          border: sel ? m.color : '#e6ebef', bg: sel ? m.bg : '#fff',
+          dot: sel ? m.color : '#c3ced6', dotFill: '#fff', innerDot: sel ? m.color : 'transparent',
+          textColor: sel ? m.color : '#33454e' };
+      });
+      const prevStored = this.state.edits[this.norm(cur.code)];
+      const rem = this.state.remote[this.norm(cur.code)];
+      const prev = (prevStored && prevStored.status) || (live && this.clean(live.status)) || (rem && this.clean(rem.status)) || cur.status;
+      if (prev) { curAlreadyChecked = true; curPrevStatus = prev; const pm = STATUS[prev] || {}; curPrevBg = pm.bg || '#fff3da'; curPrevColor = pm.color || '#a06a00'; }
+      if (!d.status) { saveBtnBg = '#b8c4cb'; saveBtnOpacity = .8; saveBtnLabel = 'เลือกสถานะก่อนบันทึก'; }
+      else { saveBtnLabel = 'บันทึก: ' + (STATUS[d.status] ? STATUS[d.status].short : d.status); }
+    }
+
+    // toast
+    const t = s.toast;
+    const toastBg = t ? (t.type === 'ok' ? '#16a34a' : t.type === 'err' ? '#dc2626' : '#334155') : '#334155';
+    const toastIcon = t ? (t.type === 'ok' ? '✓' : t.type === 'err' ? '!' : 'ⓘ') : '';
+
+    // conn msg
+    const cm = s.connMsg;
+    const connMsgBg = cm ? (cm.type === 'ok' ? '#dcfce7' : cm.type === 'err' ? '#fee2e2' : '#e8eef5') : '';
+    const connMsgColor = cm ? (cm.type === 'ok' ? '#15803d' : cm.type === 'err' ? '#c0392b' : '#3a4658') : '';
+
+    return {
+      loading: s.loading, ready,
+      isScan: ready && s.view === 'scan', isList: ready && s.view === 'list',
+      isProgress: ready && s.view === 'progress', isSettings: ready && s.view === 'settings',
+      navItems,
+      // sync chip
+      syncChipLabel, syncDotColor, syncChipBg, syncChipColor,
+      onSyncNow: () => this.syncNow(),
+      // camera
+      videoRef: this.videoRef, canvasRef: this.canvasRef,
+      cameraOn: s.cameraOn, cameraOff: !s.cameraOn,
+      videoDisplay: s.cameraOn ? 'block' : 'none',
+      camBtnLabel: s.cameraOn ? 'หยุดกล้อง' : 'เปิดกล้องสแกน',
+      camBtnBg: s.cameraOn ? '#b3261e' : '#0f766e',
+      camBtnShadow: s.cameraOn ? 'rgba(179,38,30,.26)' : 'rgba(15,118,110,.26)',
+      camBtnIcon: { __html: s.cameraOn
+        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="3"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2.5h5L16 6"/></svg>' },
+      onToggleCamera: () => this.toggleCamera(),
+      continuous: s.continuous, onToggleContinuous: () => this.setState({ continuous: !s.continuous }),
+      contColor: s.continuous ? '#0f766e' : '#8695a0', contBg: s.continuous ? '#e2f0ee' : '#fff',
+      contBorder: s.continuous ? '#0f766e' : '#dde4ea', contFill: s.continuous ? '#0f766e' : 'transparent',
+      contTrackBg: s.continuous ? '#0f766e' : '#cbd5da', contKnobX: s.continuous ? '17px' : '2px',
+      // manual
+      manualRef: this.manualRef,
+      manualCode: s.manualCode, onManualChange: e => this.setState({ manualCode: e.target.value }),
+      onManualSubmit: e => { e.preventDefault(); const v = s.manualCode.trim(); if (v) { this.lookup(v); this.setState({ manualCode: '' }); } this.focusSearch(); },
+      // recent
+      recentScans, hasRecent: recentScans.length > 0, noRecent: recentScans.length === 0,
+      onClearRecent: () => { this.persistRecent([]); this.setState({ recent: [] }); },
+      // list
+      searchTerm: s.searchTerm, onSearchChange: e => this.setState({ searchTerm: e.target.value, listLimit: 50 }),
+      statusFilters, filterFloor: s.filterFloor, floorFilterOpts,
+      onFloorFilterChange: e => this.setState({ filterFloor: e.target.value, listLimit: 50 }),
+      visibleList, listCountLabel: fmt(listTotal),
+      canLoadMore: listTotal > s.listLimit, listEmpty: listTotal === 0,
+      onLoadMore: () => this.setState({ listLimit: s.listLimit + 50 }),
+      // progress
+      pct, checkedLabel: fmt(checked), totalLabel: fmt(total), statCards, floorProgress, workProgress,
+      // detail
+      hasCurrent: !!cur, cur: cur || {}, detailFields, statusOptions,
+      liveLoading: !!cur && s.liveLoading,
+      // asset photo
+      imgTry: !!cur && s.imgStatus === 'ok',
+      imgBoxDisplay: 'block',
+      imgCodeLabel: cur ? this.imgCodeFor(cur.name) : '',
+      imgEl: (cur && s.imgStatus === 'ok' && s.imgUrl) ? React.createElement('img', {
+        src: s.imgUrl,
+        style: { width: '100%', maxHeight: '260px', objectFit: 'contain', display: 'block', background: '#11161f' },
+      }) : null,
+      curAlreadyChecked, curPrevStatus, curPrevBg, curPrevColor,
+      draftFloor: d.floor || '', draftDept: d.dept || '', draftRoom: d.room || '',
+      onDraftFloor: e => this.setDraft('floor', e.target.value),
+      onDraftDept: e => this.setDraft('dept', e.target.value),
+      onDraftRoom: e => this.setDraft('room', e.target.value),
+      onSaveCurrent: () => this.saveCurrent(), onCloseDetail: () => this.closeDetail(),
+      saveBtnBg, saveBtnLabel, saveBtnOpacity, stopProp: e => e.stopPropagation(),
+      floorOpts: s.options.floors, deptOpts: s.options.depts, roomOpts: s.options.rooms,
+      // settings
+      webhookUrl: s.webhookUrl, onWebhookChange: e => this.setWebhook(e.target.value),
+      onTestConn: () => this.testConn(), pendingCount: pending,
+      onPull: () => this.pullFromSheet(false),
+      hasConnMsg: !!cm, connMsg: cm ? cm.text : '', connMsgBg, connMsgColor,
+      onExport: () => this.exportCsv(), onResetLocal: () => this.resetLocal(),
+      imgBase: s.imgBase,
+      onImgBaseChange: e => { const v = e.target.value; this.setState({ imgBase: v }); try { localStorage.setItem(LS_IMGBASE, v); } catch (_) {} },
+      localEditLabel: fmt(Object.keys(s.edits).length),
+      // toast
+      hasToast: !!t, toastMsg: t ? t.text : '', toastBg, toastIcon,
+    };
+  }
+}
+</script>
+</body>
+</html>
